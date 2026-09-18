@@ -1,0 +1,58 @@
+seed: 42
+
+columns:
+  timestamp: timestamp
+  label: label
+  transaction_id: transaction_id
+  account_id: account_id
+  counterparty_account_id: counterparty_account_id
+
+supervised:
+  algorithm: lightgbm
+  params:
+    learning_rate: 0.05
+    n_estimators: 1000
+    max_depth: 8
+    num_leaves: 63
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_lambda: 1.0
+    random_state: 42
+  early_stopping_rounds: 100
+
+anomaly:
+  isolation_forest:
+    n_estimators: 200
+    contamination: 0.005
+    random_state: 42
+  autoencoder:
+    latent_dim: 8
+    hidden_dims: [64, 32, 8, 32, 64]
+    epochs: 30
+    batch_size: 1024
+    learning_rate: 0.001
+
+risk:
+  weights:
+    supervised: 0.5
+    anomaly: 0.2
+    graph: 0.3
+  initial_thresholds:
+    low: 0.2
+    high: 0.7
+  threshold_grid:
+    low_points: 25
+    high_points: 25
+  costs:
+    c_fn: 604000.0
+    c_fp: 75.0
+    c_review: 8.0
+    review_catch_rate: 0.7
+
+graph:
+  max_attribute_group_size: 50
+  use_louvain: true
+
+monitoring:
+  drift_ks_pvalue_trigger: 0.01
+  loss_increase_trigger_pct: 15.0

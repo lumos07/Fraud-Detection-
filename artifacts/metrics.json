@@ -1,0 +1,34 @@
+{
+  "validation": {
+    "n_samples": 744.0,
+    "tp_flagged": 19.0,
+    "fp_flagged": 28.0,
+    "fn_low_band": 0.0,
+    "tn_low_band": 697.0,
+    "precision_flagged": 0.40425531914893614,
+    "recall_flagged": 1.0,
+    "f1_flagged": 0.5757575757575758,
+    "high_block_rate": 0.043010752688172046,
+    "total_economic_loss": 1095.0,
+    "avg_economic_loss_per_tx": 1.471774193548387,
+    "detection_latency_hours": NaN
+  },
+  "test": {
+    "n_samples": 777.0,
+    "tp_flagged": 17.0,
+    "fp_flagged": 75.0,
+    "fn_low_band": 0.0,
+    "tn_low_band": 685.0,
+    "precision_flagged": 0.18478260869565216,
+    "recall_flagged": 1.0,
+    "f1_flagged": 0.3119266055045872,
+    "high_block_rate": 0.10553410553410554,
+    "total_economic_loss": 4955.0,
+    "avg_economic_loss_per_tx": 6.377091377091377,
+    "detection_latency_hours": NaN
+  },
+  "thresholds": {
+    "low": 0.32499999999999996,
+    "high": 0.35
+  }
+}

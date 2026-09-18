@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fraud Intelligence Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f6f2e8;
+      --ink: #1f1d1a;
+      --muted: #69645d;
+      --panel: #fffdf7;
+      --line: #d7cdbf;
+      --accent: #0a7d63;
+      --accent-soft: #d6f0e7;
+      --warn: #cb6400;
+      --danger: #b93a2e;
+      --shadow: 0 14px 34px rgba(36, 31, 24, 0.09);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 8%, #f0e6d2 0, transparent 35%),
+        radial-gradient(circle at 92% 0%, #d9efe9 0, transparent 32%),
+        linear-gradient(120deg, #f6f2e8 0%, #f8f5ee 100%);
+      font-family: "Sora", "Trebuchet MS", sans-serif;
+      letter-spacing: 0.01em;
+    }
+
+    .wrap {
+      width: min(1200px, 96%);
+      margin: 1.4rem auto 2rem;
+    }
+
+    .hero {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 1.2rem 1.2rem 1rem;
+      background: linear-gradient(135deg, #fffdf7 0%, #f8f3e8 100%);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      right: -70px;
+      top: -120px;
+      background: radial-gradient(circle, rgba(10, 125, 99, 0.15) 0, transparent 62%);
+      pointer-events: none;
+    }
+
+    .hero h1 {
+      margin: 0 0 0.4rem;
+      font-size: clamp(1.25rem, 2.8vw, 2rem);
+      line-height: 1.2;
+    }
+
+    .hero .meta {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      border-radius: 999px;
+      padding: 0.35rem 0.7rem;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 0.82rem;
+      margin-top: 0.8rem;
+    }
+
+    .status.offline {
+      background: #f8e2de;
+      color: var(--danger);
+    }
+
+    .grid {
+      display: grid;
+      gap: 0.9rem;
+      margin-top: 0.95rem;
+    }
+
+    .grid.metrics {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 0.85rem;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .card h2,
+    .card h3 {
+      margin: 0 0 0.5rem;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+
+    .kpi-label {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .kpi-value {
+      margin-top: 0.2rem;
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+
+    .kpi-sub {
+      margin-top: 0.18rem;
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+
+    th,
+    td {
+      padding: 0.48rem 0.45rem;
+      border-bottom: 1px solid #ebe2d6;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .scenario-grid {
+      display: grid;
+      gap: 0.65rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .scenario {
+      border: 1px solid #eadfce;
+      background: #fff9ef;
+      border-radius: 12px;
+      padding: 0.6rem;
+    }
+
+    .scenario h4 {
+      margin: 0 0 0.38rem;
+      font-size: 0.88rem;
+    }
+
+    .scenario p {
+      margin: 0.18rem 0;
+      font-size: 0.8rem;
+      color: #4e4841;
+    }
+
+    .dist {
+      display: grid;
+      gap: 0.45rem;
+    }
+
+    .dist-row {
+      display: grid;
+      grid-template-columns: 85px 1fr 60px;
+      gap: 0.55rem;
+      align-items: center;
+      font-size: 0.8rem;
+    }
+
+    .bar-wrap {
+      height: 9px;
+      border-radius: 999px;
+      background: #e7ded1;
+      overflow: hidden;
+    }
+
+    .bar {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #0a7d63 0%, #3fae8f 100%);
+    }
+
+    .split {
+      display: flex;
+      gap: 0.45rem;
+      margin-bottom: 0.52rem;
+    }
+
+    .split button {
+      border: 1px solid var(--line);
+      background: #f6f2e8;
+      color: #4d4841;
+      border-radius: 999px;
+      padding: 0.36rem 0.7rem;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .split button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .mono {
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-size: 0.84rem;
+      padding: 0.4rem 0;
+    }
+
+    .link-list a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .link-list a:hover {
+      text-decoration: underline;
+    }
+
+    .foot {
+      margin-top: 0.85rem;
+      color: var(--muted);
+      font-size: 0.74rem;
+    }
+
+    @media (max-width: 980px) {
+      .grid.metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid.two,
+      .scenario-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .wrap {
+        width: min(98%, 1200px);
+      }
+
+      .grid.metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .dist-row {
+        grid-template-columns: 70px 1fr 44px;
+      }
+
+      th,
+      td {
+        padding: 0.38rem 0.32rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <h1>Fraud Intelligence Dashboard</h1>
+      <p class="meta">Operational view for model performance, drift stress tests, and generated artifacts.</p>
+      <div id="status-pill" class="status">Loading data...</div>
+    </section>
+
+    <section id="kpis" class="grid metrics"></section>
+
+    <section class="grid two">
+      <article class="card">
+        <h2>Validation vs Test</h2>
+        <div id="metrics-table" class="empty">Loading metrics...</div>
+      </article>
+      <article class="card">
+        <h2>Risk Band Distribution</h2>
+        <h3>Validation</h3>
+        <div id="dist-validation" class="dist"></div>
+        <h3 style="margin-top:0.8rem;">Test</h3>
+        <div id="dist-test" class="dist"></div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Simulation Outcomes</h2>
+      <div id="simulation-grid" class="scenario-grid"></div>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <h2>Prediction Preview</h2>
+        <div class="split">
+          <button id="btn-val" class="active" type="button">Validation</button>
+          <button id="btn-test" type="button">Test</button>
+        </div>
+        <div id="preview-table" class="empty">Loading preview...</div>
+      </article>
+      <article class="card">
+        <h2>Artifacts</h2>
+        <div id="artifact-table" class="empty">Loading artifacts...</div>
+        <p class="foot mono">Source: <span id="artifacts-dir">artifacts/</span></p>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const numberFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
+    const moneyFmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+
+    function prettyMetric(key) {
+      return key
+        .replaceAll("_", " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    function toValue(v) {
+      if (v === null || v === undefined) return "N/A";
+      if (typeof v !== "number") return String(v);
+      if (!Number.isFinite(v)) return "N/A";
+      if (Math.abs(v) >= 1000000) return moneyFmt.format(v);
+      return numberFmt.format(v);
+    }
+
+    function buildKpiCard(label, value, sub = "") {
+      return `
+        <article class="card">
+          <p class="kpi-label">${label}</p>
+          <p class="kpi-value">${value}</p>
+          <p class="kpi-sub">${sub}</p>
+        </article>
+      `;
+    }
+
+    function renderBandDistribution(targetId, counts) {
+      const el = document.getElementById(targetId);
+      const entries = Object.entries(counts || {});
+      if (!entries.length) {
+        el.innerHTML = `<div class="empty">No distribution data.</div>`;
+        return;
+      }
+      const total = entries.reduce((sum, [, v]) => sum + v, 0);
+      el.innerHTML = entries
+        .map(([band, count]) => {
+          const pct = total > 0 ? (count / total) * 100 : 0;
+          return `
+            <div class="dist-row">
+              <span class="mono">${band}</span>
+              <div class="bar-wrap"><div class="bar" style="width:${pct.toFixed(2)}%"></div></div>
+              <span class="mono">${count}</span>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    function renderMetricsTable(metrics) {
+      const host = document.getElementById("metrics-table");
+      if (!metrics || !metrics.validation || !metrics.test) {
+        host.innerHTML = `<div class="empty">Metrics file not found in artifacts.</div>`;
+        return;
+      }
+      const keys = Array.from(
+        new Set([...Object.keys(metrics.validation || {}), ...Object.keys(metrics.test || {})])
+      );
+      const rows = keys
+        .map((k) => `
+          <tr>
+            <td>${prettyMetric(k)}</td>
+            <td class="mono">${toValue(metrics.validation?.[k])}</td>
+            <td class="mono">${toValue(metrics.test?.[k])}</td>
+          </tr>
+        `)
+        .join("");
+      host.innerHTML = `
+        <table>
+          <thead>
+            <tr><th>Metric</th><th>Validation</th><th>Test</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderSimulation(sim) {
+      const host = document.getElementById("simulation-grid");
+      if (!sim || Object.keys(sim).length === 0) {
+        host.innerHTML = `<div class="empty">Simulation results are not available.</div>`;
+        return;
+      }
+      const scenarios = [
+        ["baseline", "Baseline"],
+        ["concept_drift", "Concept Drift"],
+        ["mimicry_attack", "Mimicry Attack"],
+        ["transaction_splitting", "Transaction Splitting"],
+      ];
+      host.innerHTML = scenarios
+        .map(([key, title]) => {
+          const row = sim[key] || {};
+          return `
+            <section class="scenario">
+              <h4>${title}</h4>
+              <p><strong>Loss:</strong> ${toValue(row.total_economic_loss)}</p>
+              <p><strong>Precision:</strong> ${toValue(row.precision_flagged)}</p>
+              <p><strong>Recall:</strong> ${toValue(row.recall_flagged)}</p>
+              <p><strong>F1:</strong> ${toValue(row.f1_flagged)}</p>
+            </section>
+          `;
+        })
+        .join("");
+    }
+
+    function buildTableFromRows(rows) {
+      if (!rows || rows.length === 0) return `<div class="empty">No preview rows found.</div>`;
+      const cols = Object.keys(rows[0]);
+      const head = cols.map((c) => `<th>${c}</th>`).join("");
+      const body = rows
+        .map((r) => `<tr>${cols.map((c) => `<td class="${typeof r[c] === "number" ? "mono" : ""}">${toValue(r[c])}</td>`).join("")}</tr>`)
+        .join("");
+      return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+
+    function renderArtifacts(files) {
+      const host = document.getElementById("artifact-table");
+      if (!files || files.length === 0) {
+        host.innerHTML = `<div class="empty">No files found in artifacts directory.</div>`;
+        return;
+      }
+      const rows = files
+        .map((f) => `
+          <tr>
+            <td><a href="${f.link}" target="_blank" rel="noreferrer">${f.name}</a></td>
+            <td class="mono">${toValue(f.size_bytes)}</td>
+            <td class="mono">${f.modified_utc || "N/A"}</td>
+          </tr>
+        `)
+        .join("");
+      host.innerHTML = `
+        <table class="link-list">
+          <thead>
+            <tr><th>File</th><th>Bytes</th><th>Modified (UTC)</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderKpis(metrics) {
+      const host = document.getElementById("kpis");
+      const test = metrics?.test || {};
+      const thresholds = metrics?.thresholds || {};
+      host.innerHTML = [
+        buildKpiCard("Test Precision", toValue(test.precision_flagged), "Flagged transactions"),
+        buildKpiCard("Test Recall", toValue(test.recall_flagged), "Flagged transactions"),
+        buildKpiCard("Economic Loss", toValue(test.total_economic_loss), "Test window"),
+        buildKpiCard("Thresholds", `${toValue(thresholds.low)} / ${toValue(thresholds.high)}`, "low / high"),
+      ].join("");
+    }
+
+    function setStatus(modelLoaded) {
+      const pill = document.getElementById("status-pill");
+      pill.textContent = modelLoaded ? "Model loaded and dashboard online" : "Dashboard online, model not loaded";
+      pill.classList.toggle("offline", !modelLoaded);
+    }
+
+    function wirePreviewToggle(validationRows, testRows) {
+      const container = document.getElementById("preview-table");
+      const valBtn = document.getElementById("btn-val");
+      const testBtn = document.getElementById("btn-test");
+
+      function activate(which) {
+        const valActive = which === "validation";
+        valBtn.classList.toggle("active", valActive);
+        testBtn.classList.toggle("active", !valActive);
+        container.innerHTML = buildTableFromRows(valActive ? validationRows : testRows);
+      }
+
+      valBtn.addEventListener("click", () => activate("validation"));
+      testBtn.addEventListener("click", () => activate("test"));
+      activate("validation");
+    }
+
+    async function loadDashboard() {
+      try {
+        const res = await fetch("/dashboard/data", { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        setStatus(Boolean(data?.health?.model_loaded));
+        renderKpis(data.metrics || {});
+        renderMetricsTable(data.metrics || {});
+        renderBandDistribution("dist-validation", data.validation_risk_bands || {});
+        renderBandDistribution("dist-test", data.test_risk_bands || {});
+        renderSimulation(data.simulation_results || {});
+        renderArtifacts(data.artifacts || []);
+        wirePreviewToggle(data.validation_preview || [], data.test_preview || []);
+      } catch (err) {
+        const target = document.getElementById("metrics-table");
+        target.innerHTML = `<div class="empty">Failed to load dashboard data: ${err.message}</div>`;
+      }
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>
