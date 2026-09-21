@@ -8,7 +8,7 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from fraud_pipeline.pipeline import FraudPipeline
 
@@ -28,19 +28,25 @@ class AnalystTransaction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     transaction_id: str
-    account_id: str
+    account_id: str = Field(validation_alias=AliasChoices("account_id", "sender_account"))
     timestamp: str
     amount: float = Field(ge=0)
-    counterparty_account_id: str | None = None
+    counterparty_account_id: str | None = Field(default=None, validation_alias=AliasChoices("counterparty_account_id", "receiver_account"))
     merchant_category: str | None = None
     channel: str | None = None
-    device_id: str | None = None
+    device_id: str | None = Field(default=None, validation_alias=AliasChoices("device_id", "device_hash"))
+    transaction_type: str | None = None
+    location: str | None = None
+    device_used: str | None = None
+    merchant_id: str | None = None
+    payment_channel: str | None = None
+    label_available_at: str | None = None
     ip_address: str | None = None
     phone: str | None = None
     email: str | None = None
     balance: float | None = None
     account_created_at: str | None = None
-    label: int | None = None
+    label: int | None = Field(default=None, validation_alias=AliasChoices("label", "is_fraud"))
 
 
 class AnalystScoreRequest(BaseModel):
@@ -135,7 +141,10 @@ def score(request: ScoreRequest) -> dict[str, Any]:
 
     df = pd.DataFrame(request.transactions)
     history_df = pd.DataFrame(request.history) if request.history else None
-    scored = pipeline.predict(df, history_df=history_df)
+    try:
+        scored = pipeline.predict(df, history_df=history_df)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if request.include_analyst_payload:
         payload = pipeline.analyst_payload(
@@ -152,7 +161,7 @@ def score(request: ScoreRequest) -> dict[str, Any]:
             for p, band in zip(payload, scored["risk_band"].tolist())
         ]
 
-    cols = ["final_score", "risk_band", "s_supervised", "s_anomaly", "s_graph"]
+    cols = ["transaction_id", "final_score", "risk_band", "s_supervised", "s_anomaly", "s_graph"]
     if request.include_analyst_payload:
         cols.append("analyst_payload")
     cols = [c for c in cols if c in scored.columns]
@@ -166,12 +175,15 @@ def score_analyst(request: AnalystScoreRequest) -> dict[str, Any]:
     if not request.transactions:
         raise HTTPException(status_code=400, detail="No transactions provided.")
 
-    tx_records = [item.model_dump() for item in request.transactions]
-    history_records = [item.model_dump() for item in request.history] if request.history else None
+    tx_records = [item.model_dump(exclude_none=True) for item in request.transactions]
+    history_records = [item.model_dump(exclude_none=True) for item in request.history] if request.history else None
 
     df = pd.DataFrame(tx_records)
     history_df = pd.DataFrame(history_records) if history_records else None
-    scored = pipeline.predict(df, history_df=history_df)
+    try:
+        scored = pipeline.predict(df, history_df=history_df)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     payload = pipeline.analyst_payload(
         scored_df=scored,
@@ -215,10 +227,16 @@ def _load_json_file(path: Path) -> dict[str, Any] | None:
 
 
 def _load_prediction_preview(path: Path, limit: int = 15) -> list[dict[str, Any]]:
+    if not path.exists() and path.with_suffix(".parquet").exists():
+        path = path.with_suffix(".parquet")
     if not path.exists():
         return []
     try:
-        frame = pd.read_csv(path, nrows=limit)
+        if path.suffix == ".parquet":
+            import polars as pl
+            frame = pl.scan_parquet(path).head(limit).collect().to_pandas()
+        else:
+            frame = pd.read_csv(path, nrows=limit)
     except Exception:
         return []
 
@@ -242,10 +260,12 @@ def _load_prediction_preview(path: Path, limit: int = 15) -> list[dict[str, Any]
 
 
 def _load_risk_band_counts(path: Path) -> dict[str, int]:
+    if not path.exists() and path.with_suffix(".parquet").exists():
+        path = path.with_suffix(".parquet")
     if not path.exists():
         return {}
     try:
-        frame = pd.read_csv(path, usecols=["risk_band"])
+        frame = pd.read_parquet(path, columns=["risk_band"]) if path.suffix == ".parquet" else pd.read_csv(path, usecols=["risk_band"])
     except Exception:
         return {}
     if "risk_band" not in frame.columns:

@@ -1,0 +1,15 @@
+{
+  "source_run": "artifacts/kaggle",
+  "false_negative_cost": 1000.0,
+  "false_positive_cost": 358.613013,
+  "false_positive_basis": "mean amount of the 3,000,000 training transactions",
+  "manual_review_cost": 45.0,
+  "review_catch_rate": 0.70,
+  "maximum_medium_review_rate": null,
+  "maximum_high_block_rate": null,
+  "fn_cost_mode": "constant",
+  "threshold_grid_points": 21,
+  "ensemble_weight_grid_step": 0.5,
+  "graph_weight_grid_divisions": 2,
+  "review_catch_rate_sensitivity": [0.50, 0.70, 0.90]
+}

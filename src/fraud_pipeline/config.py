@@ -47,6 +47,17 @@ class PipelineConfig:
     def graph(self) -> dict[str, Any]:
         return self.raw.get("graph", {})
 
+    @property
+    def components(self) -> dict[str, bool]:
+        """Return component switches, preserving the original all-on behavior."""
+        defaults = {
+            "supervised": True,
+            "anomaly": True,
+            "graph": True,
+        }
+        defaults.update(self.raw.get("components", {}))
+        return {name: bool(enabled) for name, enabled in defaults.items()}
+
 
 def load_config(path: str | Path) -> PipelineConfig:
     path = Path(path)

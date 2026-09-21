@@ -73,6 +73,45 @@ def _rolling_group_metric(
     return pd.Series(result, index=np.arange(len(df)), dtype=float)
 
 
+def _historical_device_score(
+    df: pd.DataFrame,
+    device_col: str,
+    account_col: str,
+    timestamp_col: str,
+) -> pd.Series:
+    """Score device sharing using information available at each event time.
+
+    A row sees accounts observed for its device at strictly earlier timestamps,
+    plus its own account. Rows at the same timestamp do not see one another, so
+    the result is independent of their input ordering.
+    """
+    work = df[[device_col, account_col, timestamp_col]].copy()
+    work["_row_id"] = np.arange(len(work))
+    work = work.sort_values([timestamp_col, "_row_id"]).reset_index(drop=True)
+    result = np.ones(len(df), dtype=float)
+    accounts_by_device: dict[str, set[str]] = {}
+
+    for _, timestamp_group in work.groupby(timestamp_col, sort=False):
+        # Calculate every score before updating state for this timestamp.
+        for device_value, account_value, _, row_id_value in timestamp_group.itertuples(
+            index=False, name=None
+        ):
+            device = str(device_value)
+            account = str(account_value)
+            row_id = int(row_id_value)
+            prior_accounts = accounts_by_device.get(device, set())
+            result[row_id] = 1.0 / float(len(prior_accounts | {account}))
+
+        for device_value, account_value, _, _ in timestamp_group.itertuples(
+            index=False, name=None
+        ):
+            device = str(device_value)
+            account = str(account_value)
+            accounts_by_device.setdefault(device, set()).add(account)
+
+    return pd.Series(result, index=df.index, dtype=float)
+
+
 def build_tabular_features(df: pd.DataFrame, spec: FeatureSpec) -> FeatureOutput:
     work = df.copy()
     ts_col = spec.timestamp_col
@@ -144,10 +183,11 @@ def build_tabular_features(df: pd.DataFrame, spec: FeatureSpec) -> FeatureOutput
     work["ratio_large_tx_count"] = _safe_div(work["large_tx_count_30d"], work["tx_count_30d"])
 
     if "device_id" in work.columns:
-        device_accounts = work.groupby("device_id")[account_col].nunique()
-        work["device_score"] = _safe_div(
-            pd.Series(1.0, index=work.index),
-            work["device_id"].map(device_accounts).astype(float),
+        work["device_score"] = _historical_device_score(
+            work,
+            device_col="device_id",
+            account_col=account_col,
+            timestamp_col=ts_col,
         )
     else:
         work["device_score"] = 1.0

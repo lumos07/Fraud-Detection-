@@ -1,0 +1,57 @@
+{
+  "timestamp_col": "timestamp",
+  "label_col": "label",
+  "account_col": "account_id",
+  "numeric_cols": [
+    "amount",
+    "amount_over_median_30d",
+    "amount_over_avg_balance",
+    "hour",
+    "is_weekend",
+    "device_score",
+    "count_tx_last_1h",
+    "count_tx_last_24h",
+    "count_tx_last_7d",
+    "transactions_count_lifetime",
+    "account_age_days",
+    "avg_amt_1d",
+    "std_amt_7d",
+    "pct_change_avg_amt_30d",
+    "ratio_large_tx_count",
+    "graph_degree",
+    "graph_weighted_degree",
+    "graph_pagerank",
+    "graph_betweenness",
+    "graph_clustering",
+    "graph_component_size",
+    "graph_community_id",
+    "community_risk",
+    "common_neighbors",
+    "jaccard_similarity"
+  ],
+  "categorical_cols": [
+    "merchant_category",
+    "channel"
+  ],
+  "graph_cols": [
+    "graph_degree",
+    "graph_weighted_degree",
+    "graph_pagerank",
+    "graph_betweenness",
+    "graph_clustering",
+    "graph_component_size",
+    "graph_community_id",
+    "community_risk",
+    "common_neighbors",
+    "jaccard_similarity"
+  ],
+  "components": {
+    "supervised": true,
+    "anomaly": true,
+    "graph": true
+  },
+  "risk_thresholds": {
+    "low": 0.05,
+    "high": 0.375
+  }
+}

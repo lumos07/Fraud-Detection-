@@ -34,11 +34,14 @@ def main() -> None:
     cols = cfg.columns
 
     raw = load_transactions(args.input)
-    df = standardize_schema(
-        raw,
-        timestamp_col=cols["timestamp"],
-        label_col=cols["label"],
-    )
+    kaggle = cfg.raw.get("data", {}).get("profile") == "kaggle"
+    if kaggle:
+        from fraud_pipeline.kaggle_data import adapt_transactions
+        from fraud_pipeline.kaggle_pipeline import KagglePipeline
+        df = adapt_transactions(raw, require_labels=True)
+        cfg.raw["validation_label_cutoff"] = pd.Timestamp(args.val_end, tz="UTC").isoformat()
+    else:
+        df = standardize_schema(raw, timestamp_col=cols["timestamp"], label_col=cols["label"])
     splits = temporal_split(
         df,
         train_end=args.train_end,
@@ -46,7 +49,7 @@ def main() -> None:
         timestamp_col=cols["timestamp"],
     )
 
-    pipeline = FraudPipeline(cfg)
+    pipeline = KagglePipeline(cfg) if kaggle else FraudPipeline(cfg)
     fit_artifacts = pipeline.fit(splits.train, splits.validation)
 
     val_eval = evaluate_predictions(

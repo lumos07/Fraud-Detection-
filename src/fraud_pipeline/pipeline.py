@@ -49,6 +49,14 @@ class FraudPipeline:
     def account_col(self) -> str:
         return self.config.columns["account_id"]
 
+    @property
+    def anomaly_enabled(self) -> bool:
+        return self.config.components["anomaly"]
+
+    @property
+    def graph_enabled(self) -> bool:
+        return self.config.components["graph"]
+
     def fit(self, train_df: pd.DataFrame, validation_df: pd.DataFrame) -> FitArtifacts:
         self.feature_spec = fit_feature_spec(
             train_df,
@@ -60,15 +68,16 @@ class FraudPipeline:
         train_features = build_tabular_features(train_df, self.feature_spec)
         validation_features = self._build_with_history(train_df, validation_df, self.feature_spec)
 
-        self.graph_builder = AccountGraphBuilder(
-            GraphFeatureConfig(
-                account_col=self.account_col,
-                label_col=self.label_col,
-                max_attribute_group_size=int(self.config.graph.get("max_attribute_group_size", 50)),
-                use_louvain=bool(self.config.graph.get("use_louvain", True)),
+        if self.graph_enabled:
+            self.graph_builder = AccountGraphBuilder(
+                GraphFeatureConfig(
+                    account_col=self.account_col,
+                    label_col=self.label_col,
+                    max_attribute_group_size=int(self.config.graph.get("max_attribute_group_size", 50)),
+                    use_louvain=bool(self.config.graph.get("use_louvain", True)),
+                )
             )
-        )
-        self.graph_builder.fit(train_df)
+            self.graph_builder.fit(train_df)
 
         train_frame, feature_cols = self._compose_feature_frame(train_features, train_df)
         validation_frame, _ = self._compose_feature_frame(validation_features, validation_df)
@@ -94,25 +103,27 @@ class FraudPipeline:
             categorical_cols=self.categorical_cols,
         )
 
-        anomaly_cfg = self.config.anomaly
-        if_cfg = anomaly_cfg.get("isolation_forest", {})
-        self.isolation_model = IsolationForestScorer(
-            n_estimators=int(if_cfg.get("n_estimators", 200)),
-            contamination=float(if_cfg.get("contamination", 0.005)),
-            random_state=int(if_cfg.get("random_state", self.config.seed)),
-        )
-        self.isolation_model.fit(train_frame[self.numeric_cols])
+        if self.anomaly_enabled:
+            anomaly_cfg = self.config.anomaly
+            if_cfg = anomaly_cfg.get("isolation_forest", {})
+            self.isolation_model = IsolationForestScorer(
+                n_estimators=int(if_cfg.get("n_estimators", 200)),
+                contamination=float(if_cfg.get("contamination", 0.005)),
+                random_state=int(if_cfg.get("random_state", self.config.seed)),
+            )
+            self.isolation_model.fit(train_frame[self.numeric_cols])
 
-        ae_cfg = anomaly_cfg.get("autoencoder", {})
-        self.autoencoder_model = AutoencoderScorer(
-            latent_dim=int(ae_cfg.get("latent_dim", 8)),
-            hidden_dims=[int(x) for x in ae_cfg.get("hidden_dims", [64, 32, 8, 32, 64])],
-            epochs=int(ae_cfg.get("epochs", 30)),
-            batch_size=int(ae_cfg.get("batch_size", 1024)),
-            learning_rate=float(ae_cfg.get("learning_rate", 1e-3)),
-            random_state=int(self.config.seed),
-        )
-        self.autoencoder_model.fit(train_frame[self.numeric_cols])
+            ae_cfg = anomaly_cfg.get("autoencoder", {})
+            self.autoencoder_model = AutoencoderScorer(
+                latent_dim=int(ae_cfg.get("latent_dim", 8)),
+                hidden_dims=[int(x) for x in ae_cfg.get("hidden_dims", [64, 32, 8, 32, 64])],
+                epochs=int(ae_cfg.get("epochs", 30)),
+                batch_size=int(ae_cfg.get("batch_size", 1024)),
+                learning_rate=float(ae_cfg.get("learning_rate", 1e-3)),
+                random_state=int(self.config.seed),
+                backend=str(ae_cfg.get("backend", "auto")),
+            )
+            self.autoencoder_model.fit(train_frame[self.numeric_cols])
 
         train_scores = self._score_components(train_frame)
         validation_scores = self._score_components(validation_frame)
@@ -252,6 +263,7 @@ class FraudPipeline:
             "numeric_cols": self.numeric_cols,
             "categorical_cols": self.categorical_cols,
             "graph_cols": self.graph_cols,
+            "components": self.config.components,
             "risk_thresholds": {
                 "low": self.risk_aggregator.low_threshold,
                 "high": self.risk_aggregator.high_threshold,
@@ -265,24 +277,38 @@ class FraudPipeline:
         feature_output: FeatureOutput,
         source_df: pd.DataFrame,
     ) -> tuple[pd.DataFrame, dict[str, list[str]]]:
-        if self.graph_builder is None:
-            raise RuntimeError("Graph builder must be initialized before composing features.")
-
         base = feature_output.frame.copy()
-        graph_feats = self.graph_builder.transform(source_df)
-        link_feats = link_prediction_features(
-            source_df,
-            self.graph_builder,
-            account_col=self.account_col,
-            counterparty_col=self.config.columns.get("counterparty_account_id", "counterparty_account_id"),
-        )
-
-        graph_feats = graph_feats.reset_index(drop=True)
-        link_feats = link_feats.reset_index(drop=True)
         base = base.reset_index(drop=True)
+        graph_cols: list[str] = []
+        if self.graph_enabled:
+            if self.graph_builder is None:
+                raise RuntimeError("Graph builder must be initialized before composing graph features.")
+            transaction_col = self.config.columns.get("transaction_id", "transaction_id")
+            if transaction_col not in base.columns or transaction_col not in source_df.columns:
+                raise ValueError(
+                    f"{transaction_col} is required to align graph features with engineered rows"
+                )
+            if not base[transaction_col].is_unique or not source_df[transaction_col].is_unique:
+                raise ValueError(f"{transaction_col} must be unique for graph feature alignment")
+            source_by_transaction = source_df.set_index(transaction_col, drop=False)
+            missing = set(base[transaction_col]) - set(source_by_transaction.index)
+            if missing:
+                raise ValueError(
+                    f"Could not align {len(missing)} engineered rows to source transactions"
+                )
+            aligned_source = source_by_transaction.loc[base[transaction_col]].reset_index(drop=True)
 
-        graph_cols = list(graph_feats.columns) + list(link_feats.columns)
-        full = pd.concat([base, graph_feats, link_feats], axis=1)
+            graph_feats = self.graph_builder.transform(aligned_source).reset_index(drop=True)
+            link_feats = link_prediction_features(
+                aligned_source,
+                self.graph_builder,
+                account_col=self.account_col,
+                counterparty_col=self.config.columns.get("counterparty_account_id", "counterparty_account_id"),
+            ).reset_index(drop=True)
+            graph_cols = list(graph_feats.columns) + list(link_feats.columns)
+            full = pd.concat([base, graph_feats, link_feats], axis=1)
+        else:
+            full = base
         full = full.replace([np.inf, -np.inf], np.nan)
 
         numeric_cols = list(feature_output.numeric_cols) + graph_cols
@@ -296,15 +322,20 @@ class FraudPipeline:
         return full, {"numeric": numeric_cols, "categorical": categorical_cols, "graph": graph_cols}
 
     def _score_components(self, frame: pd.DataFrame) -> pd.DataFrame:
-        if self.supervised_model is None or self.isolation_model is None or self.autoencoder_model is None:
-            raise RuntimeError("Model components are not initialized.")
+        if self.supervised_model is None:
+            raise RuntimeError("Supervised model is not initialized.")
         s_supervised = self.supervised_model.predict_proba(frame)
 
-        isolation_raw = self.isolation_model.score(frame[self.numeric_cols])
-        autoencoder_raw = self.autoencoder_model.score(frame[self.numeric_cols])
-        s_anomaly = 0.5 * isolation_raw + 0.5 * autoencoder_raw
+        if self.anomaly_enabled:
+            if self.isolation_model is None or self.autoencoder_model is None:
+                raise RuntimeError("Anomaly models are not initialized.")
+            isolation_raw = self.isolation_model.score(frame[self.numeric_cols])
+            autoencoder_raw = self.autoencoder_model.score(frame[self.numeric_cols])
+            s_anomaly = 0.5 * isolation_raw + 0.5 * autoencoder_raw
+        else:
+            s_anomaly = np.zeros(len(frame), dtype=float)
 
-        s_graph = self._compute_graph_score(frame)
+        s_graph = self._compute_graph_score(frame) if self.graph_enabled else np.zeros(len(frame), dtype=float)
         return pd.DataFrame(
             {
                 "s_supervised": s_supervised,
@@ -317,7 +348,7 @@ class FraudPipeline:
     def _attach_risk(self, frame: pd.DataFrame, comp_scores: pd.DataFrame) -> pd.DataFrame:
         risk = self.risk_aggregator.predict(comp_scores)
         out = frame.copy()
-        out = pd.concat([out.reset_index(drop=True), comp_scores.reset_index(drop=True), risk], axis=1)
+        out = pd.concat([out.reset_index(drop=True), comp_scores.reset_index(drop=True), risk.reset_index(drop=True)], axis=1)
         return out
 
     def _compute_graph_score(self, frame: pd.DataFrame) -> np.ndarray:
@@ -365,8 +396,8 @@ class FraudPipeline:
         grid = risk.get("threshold_grid", {})
         return RiskConfig(
             weight_supervised=float(weights.get("supervised", 0.5)),
-            weight_anomaly=float(weights.get("anomaly", 0.2)),
-            weight_graph=float(weights.get("graph", 0.3)),
+            weight_anomaly=float(weights.get("anomaly", 0.2)) if self.anomaly_enabled else 0.0,
+            weight_graph=float(weights.get("graph", 0.3)) if self.graph_enabled else 0.0,
             c_fn=float(costs.get("c_fn", 604000.0)),
             c_fp=float(costs.get("c_fp", 75.0)),
             c_review=float(costs.get("c_review", 8.0)),
@@ -380,11 +411,10 @@ class FraudPipeline:
     def _check_fitted(self) -> None:
         if (
             self.feature_spec is None
-            or self.graph_builder is None
             or self.supervised_model is None
-            or self.isolation_model is None
-            or self.autoencoder_model is None
             or self.risk_aggregator is None
+            or (self.graph_enabled and self.graph_builder is None)
+            or (self.anomaly_enabled and (self.isolation_model is None or self.autoencoder_model is None))
         ):
             raise RuntimeError("Pipeline is not fit yet.")
 

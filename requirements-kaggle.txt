@@ -1,0 +1,4 @@
+-r requirements.txt
+polars>=1.24
+pyarrow>=18
+igraph>=0.11

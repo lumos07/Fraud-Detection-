@@ -1,0 +1,51 @@
+{
+  "components": {
+    "name": "Supervised + graph",
+    "anomaly": 0,
+    "graph": 1
+  },
+  "thresholds": {
+    "low": 0.22499999999999998,
+    "high": 0.425
+  },
+  "validation": {
+    "n_samples": 512.0,
+    "tp_flagged": 11.0,
+    "fp_flagged": 3.0,
+    "fn_not_high": 2.0,
+    "tn_not_high": 496.0,
+    "precision_flagged": 0.7857142857142857,
+    "recall_flagged": 0.8461538461538461,
+    "f1_flagged": 0.8148148148148148,
+    "high_block_rate": 0.02734375,
+    "total_economic_loss": 786041.0,
+    "avg_economic_loss_per_tx": 1535.236328125,
+    "detection_latency_hours": null,
+    "accuracy_flagged": 0.990234375,
+    "specificity_flagged": 0.9939879759519038,
+    "flagged_rate": 0.02734375,
+    "fraud_prevalence": 0.025390625,
+    "roc_auc": 0.9184522891937723,
+    "average_precision": 0.8129471855180356
+  },
+  "test": {
+    "n_samples": 513.0,
+    "tp_flagged": 7.0,
+    "fp_flagged": 15.0,
+    "fn_not_high": 1.0,
+    "tn_not_high": 490.0,
+    "precision_flagged": 0.3181818181818182,
+    "recall_flagged": 0.875,
+    "f1_flagged": 0.4666666666666667,
+    "high_block_rate": 0.042884990253411304,
+    "total_economic_loss": 182925.00000000003,
+    "avg_economic_loss_per_tx": 356.5789473684211,
+    "detection_latency_hours": null,
+    "accuracy_flagged": 0.9688109161793372,
+    "specificity_flagged": 0.9702970297029703,
+    "flagged_rate": 0.042884990253411304,
+    "fraud_prevalence": 0.015594541910331383,
+    "roc_auc": 0.9903465346534653,
+    "average_precision": 0.523465634606939
+  }
+}

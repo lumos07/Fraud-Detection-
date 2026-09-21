@@ -1,5 +1,35 @@
 # Failure of AI-Based Early Warning Systems in Financial Fraud
 
+## Kaggle migration (recommended workflow)
+
+The new profile is `configs/kaggle.json`; see [the migration guide](docs/kaggle-migration.md)
+for schema, point-in-time rules, graph formulas, configuration, and limitations.
+This preserves the existing estimators/risk optimizer/API and replaces the legacy
+feature and graph path for the Kaggle profile. The old commands below are retained
+for reproducing the earlier proof of concept, not for evaluating the Kaggle graph.
+
+```bash
+.venv/bin/python -m pip install -r requirements-kaggle.txt
+mkdir -p data/kaggle
+curl -L --fail --output data/kaggle/financial-transactions-v1.zip \
+  'https://www.kaggle.com/api/v1/datasets/download/aryan208/financial-transactions-dataset-for-fraud-detection?datasetVersionNumber=1'
+.venv/bin/python scripts/prepare_kaggle.py
+.venv/bin/python scripts/run_kaggle_study.py --output-dir artifacts/kaggle --robustness
+```
+
+The default study uses **all 5 million rows**. To explicitly run a 50,000-row
+smoke test instead, add `--sample-every 100 --output-dir artifacts/kaggle_smoke`.
+`--resume` reuses feature caches only when source/configuration/code match.
+The source is **synthetic**, according to its Kaggle data card; it is not evidence
+of real-bank performance. Classification metrics count **high risk only** as positive.
+
+Outputs include A–D and internal-ablation predictions/metrics, economic-cost
+sensitivity, snapshot audits, manifests, evaluation report, and D's saved model.
+`--robustness` adds four counterfactual stress tests for A–D. Use
+`MODEL_PATH=artifacts/kaggle/D/pipeline.joblib ARTIFACTS_DIR=artifacts/kaggle/D` to serve the new model through the
+existing API. Initial configuration weights are hypotheses; fitted weights and
+thresholds are stored with each experiment, without overwriting legacy results.
+
 Operational starter implementation for an adaptive hybrid fraud pipeline with:
 
 - Temporal data splits (leakage-safe)
@@ -57,6 +87,21 @@ Outputs:
 - `artifacts/metrics.json`
 - `artifacts/predictions_validation.csv`
 - `artifacts/predictions_test.csv`
+
+## 3.2) Run Component Ablation Study
+
+```bash
+python scripts/run_ablation_study.py \
+  --input data/transactions.csv \
+  --config configs/default.json \
+  --train-end 2025-06-30 \
+  --val-end 2025-07-31 \
+  --output-dir artifacts/ablation
+```
+
+This runs A (supervised), B (supervised + anomaly), C (supervised + graph), and D
+(all components). It stores aggregate metrics in `summary_metrics.csv` and `metrics.json`,
+an interpretation in `evaluation.md`, and predictions/metrics for every experiment.
 
 ## 3.1) Train On Your Real Dataset
 

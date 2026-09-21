@@ -77,6 +77,7 @@ class SupervisedModel:
         y_validation: pd.Series,
         numeric_cols: list[str],
         categorical_cols: list[str],
+        return_training_scores: bool = True,
     ) -> SupervisedResult:
         self.numeric_cols = list(numeric_cols)
         self.categorical_cols = list(categorical_cols)
@@ -89,7 +90,7 @@ class SupervisedModel:
         cat_pipe = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy="most_frequent")),
-                ("onehot", OneHotEncoder(handle_unknown="ignore")),
+                ("onehot", OneHotEncoder(handle_unknown="ignore", dtype=np.float32)),
             ]
         )
         self.preprocessor = ColumnTransformer(
@@ -98,6 +99,7 @@ class SupervisedModel:
                 ("cat", cat_pipe, self.categorical_cols),
             ],
             remainder="drop",
+            sparse_threshold=1.0,
         )
 
         x_train = self.preprocessor.fit_transform(train_df)
@@ -112,7 +114,7 @@ class SupervisedModel:
         self.model = self._build_model(y_train)
         self._fit_model(x_train, y_train.to_numpy(), x_validation, y_validation.to_numpy())
 
-        train_scores = self.predict_proba(train_df)
+        train_scores = self.predict_proba(train_df) if return_training_scores else np.empty(0)
         validation_scores = self.predict_proba(validation_df)
         return SupervisedResult(train_scores=train_scores, validation_scores=validation_scores)
 
@@ -138,7 +140,10 @@ class SupervisedModel:
             params.setdefault("scale_pos_weight", pos_weight)
             return lgb.LGBMClassifier(**params)
 
-        if self.algorithm in {"xgboost", "xgb"} and xgb is not None:
+        use_xgb_fallback = self.algorithm == "lightgbm" and lgb is None and xgb is not None
+        if (self.algorithm in {"xgboost", "xgb"} or use_xgb_fallback) and xgb is not None:
+            if use_xgb_fallback:
+                warnings.warn("LightGBM is unavailable; using XGBoost with compatible parameters", RuntimeWarning)
             params = {
                 "learning_rate": 0.05,
                 "n_estimators": 800,
@@ -152,7 +157,11 @@ class SupervisedModel:
                 "eval_metric": "auc",
             }
             params.update(self.params)
+            params.pop("num_leaves", None)
+            if params.get("verbosity", 1) < 0:
+                params["verbosity"] = 0
             params.setdefault("scale_pos_weight", pos_weight)
+            params.setdefault("early_stopping_rounds", self.early_stopping_rounds)
             return xgb.XGBClassifier(**params)
 
         params = {
@@ -193,7 +202,9 @@ class SupervisedModel:
             )
             return
 
-        self.model.fit(x_train, y_train)
+        positive = max(int((y_train == 1).sum()), 1)
+        weights = np.where(y_train == 1, (y_train == 0).sum() / positive, 1.0)
+        self.model.fit(x_train, y_train, sample_weight=weights)
 
     def predict_proba(self, data: pd.DataFrame) -> np.ndarray:
         if self.model is None or self.preprocessor is None:
@@ -246,6 +257,18 @@ class SupervisedModel:
         return self._fallback_contributions(x)
 
     def _shap_contributions(self, x: Any) -> np.ndarray | None:
+        # Native tree SHAP avoids compatibility failures between independently
+        # updated SHAP and boosting-library releases. The final column is bias.
+        try:
+            if lgb is not None and isinstance(self.model, lgb.LGBMClassifier):
+                values = self.model.predict(x, pred_contrib=True)
+                values = values.toarray() if sparse.issparse(values) else np.asarray(values)
+                return values[:, :-1]
+            if xgb is not None and isinstance(self.model, xgb.XGBClassifier):
+                values = self.model.get_booster().predict(xgb.DMatrix(x), pred_contribs=True)
+                return np.asarray(values)[:, :-1]
+        except Exception:
+            pass
         if shap is None or self.model is None:
             return None
         try:
@@ -306,7 +329,7 @@ class SupervisedModel:
         elif self.model is None and self.algorithm == "lightgbm" and lgb is not None:
             use_named_frame = True
 
-        if use_named_frame:
+        if use_named_frame and not sparse.issparse(x):
             return _to_feature_frame(x, self.transformed_feature_names)
         return x
 
@@ -369,6 +392,7 @@ class AutoencoderScorer:
         batch_size: int = 1024,
         learning_rate: float = 1e-3,
         random_state: int = 42,
+        backend: str = "auto",
     ) -> None:
         self.latent_dim = latent_dim
         self.hidden_dims = hidden_dims or [64, 32, 8, 32, 64]
@@ -377,8 +401,14 @@ class AutoencoderScorer:
         self.learning_rate = learning_rate
         self.random_state = random_state
 
+        backend = backend.lower()
+        if backend not in {"auto", "torch", "pca"}:
+            raise ValueError("Autoencoder backend must be one of: auto, torch, pca")
+        if backend == "torch" and torch is None:
+            raise ModuleNotFoundError("Torch backend requested, but torch is not installed")
+
         self.scaler = StandardScaler()
-        self.backend = "torch" if torch is not None else "pca"
+        self.backend = ("torch" if torch is not None else "pca") if backend == "auto" else backend
         self.model = None
 
     def fit(self, x: pd.DataFrame | np.ndarray) -> "AutoencoderScorer":
